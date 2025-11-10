@@ -187,13 +187,8 @@ client.on('interactionCreate', async (interaction) => {
 
 // Événement : Réaction ajoutée
 client.on('messageReactionAdd', async (reaction, user) => {
-    console.log(`[DEBUG] Réaction détectée: ${reaction.emoji.name} par ${user.tag}`);
-
     // Ignorer les réactions du bot
-    if (user.bot) {
-        console.log('[DEBUG] Réaction du bot ignorée');
-        return;
-    }
+    if (user.bot) return;
 
     // Si la réaction est partielle, la récupérer
     if (reaction.partial) {
@@ -205,34 +200,22 @@ client.on('messageReactionAdd', async (reaction, user) => {
         }
     }
 
-    console.log(`[DEBUG] Message ID: ${reaction.message.id}, Config ID: ${config.rules_message_id}`);
-    console.log(`[DEBUG] Emoji: ${reaction.emoji.name}, Config Emoji: ${config.emoji}`);
-
     // Vérifier si c'est le message du règlement
-    if (reaction.message.id !== config.rules_message_id) {
-        console.log('[DEBUG] Pas le bon message');
-        return;
-    }
+    if (reaction.message.id !== config.rules_message_id) return;
 
     // Vérifier si c'est le bon emoji
-    if (reaction.emoji.name !== config.emoji) {
-        console.log('[DEBUG] Pas le bon emoji');
-        return;
-    }
-
-    console.log('[DEBUG] Validation détectée!');
+    if (reaction.emoji.name !== config.emoji) return;
 
     const guild = reaction.message.guild;
     const member = guild.members.cache.get(user.id);
 
     if (!member) return;
 
-    // Logger la validation
-    await sendLog(guild, `✅ **${member}** a accepté le règlement`);
-
     // Attribution de rôle (si configuré)
     if (VERIFIED_ROLE_ID === '0') {
-        console.log(`ℹ️ Attribution de rôle désactivée pour ${member.user.tag}`);
+        // Pas de rôle configuré, juste logger la validation
+        await sendLog(guild, `✅ **${member}** a accepté le règlement`);
+        console.log(`ℹ️ ${member.user.tag} a accepté le règlement (attribution de rôle désactivée)`);
         return;
     }
 
@@ -240,25 +223,24 @@ client.on('messageReactionAdd', async (reaction, user) => {
     const memberRoles = member.roles.cache.filter(r => r.id !== guild.id); // Exclure @everyone
     if (memberRoles.size > 0) {
         console.log(`ℹ️ ${member.user.tag} a déjà des rôles, attribution ignorée`);
-        await sendLog(guild, `⚠️ **${member}** a déjà des rôles, attribution du rôle ignorée`);
+        await sendLog(guild, `✅ **${member}** a accepté le règlement (a déjà des rôles)`);
         return;
     }
 
     // Récupérer le rôle à attribuer
     const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
     if (!role) {
-        const errorMsg = `❌ Erreur: Le rôle avec l'ID ${VERIFIED_ROLE_ID} n'existe pas!`;
-        await sendLog(guild, errorMsg);
+        await sendLog(guild, `✅ **${member}** a accepté le règlement\n❌ Erreur: Le rôle avec l'ID ${VERIFIED_ROLE_ID} n'existe pas!`);
         return;
     }
 
     // Donner le rôle au membre
     try {
         await member.roles.add(role);
-        await sendLog(guild, `🎭 Rôle **${role.name}** attribué à ${member}`);
+        await sendLog(guild, `✅ **${member}** a accepté le règlement et a reçu le rôle **${role.name}**`);
+        console.log(`✅ ${member.user.tag} a validé le règlement et reçu le rôle ${role.name}`);
     } catch (error) {
-        const errorMsg = `❌ Erreur: Pas la permission de donner le rôle à ${member}`;
-        await sendLog(guild, errorMsg);
+        await sendLog(guild, `✅ **${member}** a accepté le règlement\n❌ Erreur: Pas la permission de donner le rôle`);
         console.error(error);
     }
 });
@@ -289,26 +271,28 @@ client.on('messageReactionRemove', async (reaction, user) => {
 
     if (!member) return;
 
-    // Logger le retrait de validation
-    await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement`);
-
     // Retrait de rôle (si configuré)
     if (VERIFIED_ROLE_ID === '0') {
-        console.log(`ℹ️ Retrait de rôle désactivé pour ${member.user.tag}`);
+        // Pas de rôle configuré, juste logger le retrait
+        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement`);
+        console.log(`ℹ️ ${member.user.tag} a retiré son acceptation (retrait de rôle désactivé)`);
         return;
     }
 
     // Récupérer le rôle à retirer
     const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
-    if (!role) return;
+    if (!role) {
+        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement`);
+        return;
+    }
 
     // Retirer le rôle au membre
     try {
         await member.roles.remove(role);
-        await sendLog(guild, `🎭 Rôle **${role.name}** retiré à ${member}`);
+        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement et le rôle **${role.name}** a été retiré`);
+        console.log(`❌ ${member.user.tag} a retiré son acceptation et perdu le rôle ${role.name}`);
     } catch (error) {
-        const errorMsg = `❌ Erreur: Pas la permission de retirer le rôle à ${member}`;
-        await sendLog(guild, errorMsg);
+        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement\n❌ Erreur: Pas la permission de retirer le rôle`);
         console.error(error);
     }
 });
