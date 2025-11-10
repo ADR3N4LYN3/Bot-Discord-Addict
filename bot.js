@@ -220,6 +220,14 @@ client.on('messageReactionAdd', async (reaction, user) => {
         return;
     }
 
+    // Vérifier que le membre n'a aucun autre rôle (seulement @everyone)
+    const memberRoles = member.roles.cache.filter(r => r.id !== guild.id); // Exclure @everyone
+    if (memberRoles.size > 0) {
+        console.log(`ℹ️ ${member.user.tag} a déjà des rôles, attribution ignorée`);
+        await sendLog(guild, `⚠️ **${member}** a déjà des rôles, attribution du rôle ignorée`);
+        return;
+    }
+
     // Récupérer le rôle à attribuer
     const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
     if (!role) {
