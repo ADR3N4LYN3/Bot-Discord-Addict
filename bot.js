@@ -439,26 +439,26 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.commandName === 'information') {
         // Créer l'embed pour les informations
         const embed = new EmbedBuilder()
-            .setTitle('📌 Informations importantes concernant le serveur')
+            .setTitle('**📌 Informations importantes concernant le serveur**')
             .setColor(0x3498DB)
             .addFields(
                 {
-                    name: '🎁 Giveaway',
-                    value: '**Pour créer :** utilise la commande /giveaway dans <#1437389780181581964>\n\n**Tu as gagné :** penses à dire merci et envoi ton pseudo stake dans le salon\n\n⚠️ Un giveaway t\'engage. Une fois lancé, tu dois récompenser le/les gagnants avec la somme annoncée, dans la monnaie de ton choix.',
+                    name: '**🎁 Giveaway**',
+                    value: 'Pour créer : utilise la commande /giveaway dans <#1437389780181581964>\n\nTu as gagné : penses à dire merci et envoi ton pseudo stake dans le salon\n\n⚠️ Un giveaway t\'engage. Une fois lancé, tu dois récompenser le/les gagnants avec la somme annoncée, dans la monnaie de ton choix.',
                     inline: false
                 },
                 {
-                    name: '🎟️ Ticket du vendredi',
+                    name: '**🎟️ Ticket du vendredi**',
                     value: 'Chaque vendredi, entre le coupon du jeudi et le weekly du samedi, une personne sera tirée au sort pour recevoir un dépôt allant de 50€ à 500€, selon l\'activité du serveur.',
                     inline: false
                 },
                 {
-                    name: '🎰 Bonus Hunt',
+                    name: '**🎰 Bonus Hunt**',
                     value: 'On vous prête un compte pour farm un hunt.\n\nEn cas de profit, une roue de pourcentage 🎡 déterminera la part du gain qui te sera reversée.',
                     inline: false
                 },
                 {
-                    name: '🏆 Tournois',
+                    name: '**🏆 Tournois**',
                     value: 'Plusieurs fois par mois, des tournois hors casino seront organisés :\n\n• Échecs ♟️\n• Gaming 🎮\n• IRL 🎯\n\nLes 3 premiers repartent avec des gains en crypto 💰',
                     inline: false
                 }
