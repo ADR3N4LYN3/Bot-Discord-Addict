@@ -449,7 +449,7 @@ client.on('interactionCreate', async (interaction) => {
                 },
                 {
                     name: '🎟️ Ticket du vendredi',
-                    value: 'Chaque vendredi, entre le coupon du jeudi et le weekly du samedi, une personne sera tirée au sort pour recevoir un dépôt allant de **50€ à 500€**, selon l\'activité du serveur.',
+                    value: 'Chaque vendredi, entre le coupon du jeudi et le weekly du samedi, une personne sera tirée au sort pour recevoir un dépôt allant de 50€ à 500€, selon l\'activité du serveur.',
                     inline: false
                 },
                 {
