@@ -18,11 +18,15 @@ try {
     process.exit(1);
 }
 
-// Définition de la slash command
+// Définition des slash commands
 const commands = [
     new SlashCommandBuilder()
         .setName('reglement')
         .setDescription('Poste le règlement du serveur avec validation par réaction')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
+        .setName('information')
+        .setDescription('Poste les informations importantes du serveur')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
 ].map(command => command.toJSON());
 
@@ -181,6 +185,50 @@ client.on('interactionCreate', async (interaction) => {
         } catch (error) {
             console.error('❌ Erreur lors de la publication du règlement:', error.message);
             await interaction.editReply({ content: '❌ Erreur lors de la publication du règlement.' });
+        }
+    }
+
+    // Commande /information
+    if (interaction.commandName === 'information') {
+        // Créer l'embed pour les informations
+        const embed = new EmbedBuilder()
+            .setTitle('📌 Informations importantes concernant le serveur')
+            .setColor(0x3498DB)
+            .addFields(
+                {
+                    name: '🎁 Giveaway',
+                    value: 'Utilise la commande /giveaway dans le salon prévu pour en créer un.\n\n⚠️ Un giveaway t\'engage. Une fois lancé, tu dois récompenser le/les gagnants avec la somme annoncée, dans la monnaie de ton choix.',
+                    inline: false
+                },
+                {
+                    name: '🎟️ Ticket du vendredi',
+                    value: 'Chaque vendredi, entre le coupon du jeudi et le weekly du samedi, une personne sera tirée au sort pour recevoir un dépôt allant de 50€ à 500€, selon l\'activité du serveur.',
+                    inline: false
+                },
+                {
+                    name: '🎰 Bonus Hunt',
+                    value: 'On vous prête un compte pour farm un hunt.\nEn cas de profit, une roue de pourcentage 🎡 déterminera la part du gain qui te sera reversée.',
+                    inline: false
+                },
+                {
+                    name: '🏆 Tournois',
+                    value: 'Plusieurs fois par mois, des tournois hors casino seront organisés :\n• Échecs ♟️\n• Gaming 🎮\n• IRL 🎯\n\nLes 3 premiers repartent avec des gains en crypto 💰',
+                    inline: false
+                }
+            )
+            .setFooter({ text: 'Bonne chance à tous ! 🍀' });
+
+        try {
+            // Répondre à l'interaction de manière éphémère
+            await interaction.reply({ content: '✅ Informations postées !', flags: MessageFlags.Ephemeral });
+
+            // Envoyer l'embed dans le channel
+            const infoMessage = await interaction.channel.send({ embeds: [embed] });
+
+            console.log(`Informations postées ! ID du message: ${infoMessage.id}`);
+        } catch (error) {
+            console.error('❌ Erreur lors de la publication des informations:', error.message);
+            await interaction.editReply({ content: '❌ Erreur lors de la publication des informations.' });
         }
     }
 });
