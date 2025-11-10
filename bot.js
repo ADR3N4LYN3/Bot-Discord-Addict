@@ -71,6 +71,9 @@ client.once('ready', () => {
     console.log(`${client.user.tag} est connecté et prêt !`);
     console.log(`ID du bot: ${client.user.id}`);
     console.log('------');
+    console.log(`/reglement enregistré sur`);
+    console.log(`Actif sur ${client.guilds.cache.size} serveur(s)`);
+    console.log('------');
     console.log(`Attribution de rôle: ${VERIFIED_ROLE_ID !== '0' ? '✅ Activée' : '❌ Désactivée'}`);
     console.log(`Logs Discord: ${LOG_CHANNEL_ID !== '0' ? '✅ Activés' : '❌ Désactivés'}`);
     console.log('------');
