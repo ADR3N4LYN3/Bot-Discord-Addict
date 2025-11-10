@@ -211,12 +211,10 @@ client.on('messageReactionAdd', async (reaction, user) => {
 
     if (!member) return;
 
-    // Logger la validation
-    await sendLog(guild, `✅ **${member}** (${member.user.tag}) a accepté le règlement`);
-
     // Attribution de rôle (si configuré)
     if (VERIFIED_ROLE_ID === '0') {
         console.log(`ℹ️ Attribution de rôle désactivée pour ${member.user.tag}`);
+        await sendLog(guild, `✅ **${member}** a accepté le règlement`);
         return;
     }
 
@@ -239,7 +237,7 @@ client.on('messageReactionAdd', async (reaction, user) => {
     // Donner le rôle au membre
     try {
         await member.roles.add(role);
-        await sendLog(guild, `🎭 Rôle **${role.name}** attribué à ${member}`);
+        await sendLog(guild, `✅ **${member}** a accepté le règlement et a reçu le rôle **${role.name}**`);
     } catch (error) {
         const errorMsg = `❌ Erreur: Pas la permission de donner le rôle à ${member}`;
         await sendLog(guild, errorMsg);
@@ -273,12 +271,10 @@ client.on('messageReactionRemove', async (reaction, user) => {
 
     if (!member) return;
 
-    // Logger le retrait de validation
-    await sendLog(guild, `❌ **${member}** (${member.user.tag}) a retiré son acceptation du règlement`);
-
     // Retrait de rôle (si configuré)
     if (VERIFIED_ROLE_ID === '0') {
         console.log(`ℹ️ Retrait de rôle désactivé pour ${member.user.tag}`);
+        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement`);
         return;
     }
 
@@ -289,7 +285,7 @@ client.on('messageReactionRemove', async (reaction, user) => {
     // Retirer le rôle au membre
     try {
         await member.roles.remove(role);
-        await sendLog(guild, `🎭 Rôle **${role.name}** retiré à ${member}`);
+        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement et le rôle **${role.name}** a été retiré`);
     } catch (error) {
         const errorMsg = `❌ Erreur: Pas la permission de retirer le rôle à ${member}`;
         await sendLog(guild, errorMsg);
