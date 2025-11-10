@@ -1,4 +1,4 @@
-# Bot Discord - Règlement avec Validation
+# Bot Discord - Règlement avec validation
 
 Bot Discord qui permet de poster le règlement du serveur et de suivre automatiquement les membres qui acceptent les règles en réagissant avec un emoji.
 
