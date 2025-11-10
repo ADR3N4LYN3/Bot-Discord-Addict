@@ -48,10 +48,10 @@ const commands = [
                 .setRequired(true))
         .addIntegerOption(option =>
             option.setName('duree')
-                .setDescription('Durée du sondage en jours')
+                .setDescription('Durée du sondage en heures')
                 .setRequired(true)
                 .setMinValue(1)
-                .setMaxValue(30)) // 30 jours max
+                .setMaxValue(720)) // 30 jours max
         .addStringOption(option =>
             option.setName('type')
                 .setDescription('Type de vote')
@@ -513,7 +513,7 @@ client.on('interactionCreate', async (interaction) => {
         try {
             // Créer l'embed initial
             const now = Date.now();
-            const endsAt = now + (duration * 24 * 60 * 60 * 1000);
+            const endsAt = now + (duration * 60 * 60 * 1000);
 
             let description = '';
             options.forEach((option, index) => {
@@ -572,12 +572,20 @@ client.on('interactionCreate', async (interaction) => {
             // Créer un timer pour fermer automatiquement le sondage
             const timer = setTimeout(() => {
                 closePoll(pollMessage.id, 'automatique');
-            }, duration * 24 * 60 * 60 * 1000);
+            }, duration * 60 * 60 * 1000);
 
             activePollTimers.set(pollMessage.id, timer);
 
             // Logger
-            await sendLog(interaction.guild, `📊 Nouveau sondage créé par **${interaction.user}** : "${question}" (${duration}j)`);
+            let durationText;
+            if (duration >= 24) {
+                const days = Math.floor(duration / 24);
+                const hours = duration % 24;
+                durationText = hours > 0 ? `${days}j ${hours}h` : `${days}j`;
+            } else {
+                durationText = `${duration}h`;
+            }
+            await sendLog(interaction.guild, `📊 Nouveau sondage créé par **${interaction.user}** : "${question}" (${durationText})`);
 
             console.log(`✅ Sondage créé : "${question}" - ID: ${pollMessage.id}`);
         } catch (error) {
