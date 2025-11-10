@@ -8,15 +8,39 @@ Bot Discord qui permet de poster le règlement du serveur et de suivre automatiq
 - Les utilisateurs doivent réagir avec un emoji pour valider
 - **Logs automatiques sur un channel Discord** de qui a validé/retiré sa validation
 - **Attribution de rôle optionnelle** (activable quand vous êtes prêt)
+- **Statut personnalisé** du bot (ex: "🔍 Check les arrivées")
 - Configuration sécurisée avec fichier `.env`
 
 ## Prérequis
 
-- Python 3.8 ou supérieur
+- **Node.js 16.9.0+**
 - Un compte Discord Developer avec un bot créé
 - Les permissions administrateur sur votre serveur Discord
 
-## Installation
+## Installation rapide
+
+```bash
+# Clonez le repository
+git clone https://github.com/ADR3N4LYN3/Bot-Discord-Addict.git
+cd Bot-Discord-Addict
+
+# Copiez et configurez le .env
+cp .env.example .env
+nano .env  # Ajoutez votre token et IDs
+
+# Installez les dépendances
+npm install
+
+# Lancez le bot
+npm start
+# OU
+node bot.js
+# OU (avec le script)
+chmod +x start.sh
+./start.sh
+```
+
+## Configuration détaillée
 
 ### 1. Créer le bot sur Discord Developer Portal
 
@@ -63,37 +87,10 @@ Si vous voulez activer l'attribution automatique de rôle plus tard :
 4. **Important**: Placez le rôle du bot AU-DESSUS du rôle "Vérifié" dans la hiérarchie
 5. Faites un clic droit sur le rôle et "Copier l'identifiant"
 
-### 5. Installer les dépendances Python
+### 5. Configuration du fichier .env
 
-```bash
-# Clonez le repository
-git clone https://github.com/ADR3N4LYN3/Bot-Discord-Addict.git
-cd Bot-Discord-Addict
+Éditez `.env` avec vos informations:
 
-# Créez un environnement virtuel (recommandé)
-python -m venv venv
-
-# Activez l'environnement virtuel
-# Sur Windows:
-venv\Scripts\activate
-# Sur Linux/Mac:
-source venv/bin/activate
-
-# Installez les dépendances
-pip install -r requirements.txt
-```
-
-### 6. Configuration
-
-1. Copiez le fichier de configuration exemple:
-```bash
-# Sur Windows:
-copy .env.example .env
-# Sur Linux/Mac:
-cp .env.example .env
-```
-
-2. Éditez `.env` avec vos informations:
 ```env
 # Token du bot Discord (OBLIGATOIRE)
 DISCORD_TOKEN=votre_token_ici
@@ -115,7 +112,9 @@ LOG_CHANNEL_ID=123456789012345678
 ### Lancer le bot
 
 ```bash
-python bot.py
+npm start
+# OU
+node bot.js
 ```
 
 Vous devriez voir:
@@ -127,6 +126,8 @@ Attribution de rôle: ❌ Désactivée
 Logs Discord: ✅ Activés
 ------
 ```
+
+Le bot apparaîtra en ligne avec le statut **"🔍 Check les arrivées"**.
 
 ### Poster le règlement
 
@@ -149,16 +150,38 @@ Une fois le règlement posté:
 
 ## Personnalisation
 
+### Modifier le statut du bot
+
+Dans [bot.js](bot.js), ligne ~76 :
+
+```javascript
+client.user.setPresence({
+    activities: [{
+        name: '🔍 Check les arrivées',  // Changez ici
+        type: ActivityType.Custom
+    }],
+    status: 'online' // online, idle, dnd, invisible
+});
+```
+
+Types d'activité disponibles:
+- `ActivityType.Playing` → "Joue à ..."
+- `ActivityType.Streaming` → "Diffuse ..."
+- `ActivityType.Listening` → "Écoute ..."
+- `ActivityType.Watching` → "Regarde ..."
+- `ActivityType.Custom` → Texte personnalisé
+- `ActivityType.Competing` → "En compétition dans ..."
+
 ### Modifier le règlement
 
-Éditez le fichier [bot.py](bot.py) dans la fonction `post_rules()`:
+Éditez le fichier [bot.js](bot.js) dans la fonction qui crée l'embed :
 
-```python
-embed.add_field(
-    name="1️⃣ Votre règle",
-    value="Description de votre règle",
-    inline=False
-)
+```javascript
+.addFields({
+    name: '1️⃣ Votre règle',
+    value: 'Description de votre règle',
+    inline: false
+})
 ```
 
 ### Modifier l'emoji de validation
@@ -205,7 +228,8 @@ Pour que seuls les membres vérifiés puissent voir les salons:
 
 ### Le bot ne démarre pas
 - Vérifiez que le fichier `.env` existe et contient votre token
-- Vérifiez que vous avez installé les dépendances: `pip install -r requirements.txt`
+- Vérifiez que vous avez installé les dépendances: `npm install`
+- Vérifiez que Node.js 16.9+ est installé: `node --version`
 
 ### Le bot ne répond pas
 - Vérifiez que le bot est bien en ligne sur Discord
@@ -228,13 +252,14 @@ Pour que seuls les membres vérifiés puissent voir les salons:
 ```
 Bot-Discord-Addict/
 │
-├── bot.py                 # Code principal du bot
-├── config.json           # Configuration non-sensible (emoji, message IDs)
-├── .env                  # Secrets (token, IDs) - NE PAS COMMIT
-├── .env.example          # Template pour .env
-├── requirements.txt      # Dépendances Python
-├── .gitignore           # Fichiers à ignorer par Git
-└── README.md            # Documentation
+├── bot.js                 # Code principal du bot
+├── package.json           # Dépendances Node.js
+├── start.sh               # Script de démarrage automatique
+├── config.json            # Configuration non-sensible (emoji, message IDs)
+├── .env                   # Secrets (token, IDs) - NE PAS COMMIT
+├── .env.example           # Template pour .env
+├── .gitignore             # Fichiers à ignorer par Git
+└── README.md              # Documentation
 ```
 
 ## Commandes disponibles
@@ -245,40 +270,75 @@ Bot-Discord-Addict/
 
 ## Déploiement sur VPS
 
-Pour déployer le bot sur un VPS :
+Pour déployer le bot sur un VPS (Debian/Ubuntu) :
 
-### 1. Sur votre machine locale
 ```bash
-# Committez vos modifications (sans le .env)
-git add .
-git commit -m "Configuration du bot"
-git push
-```
+# 1. Installer Node.js
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 
-### 2. Sur votre VPS
-```bash
-# Clonez le repository
+# 2. Cloner le repository
 git clone https://github.com/ADR3N4LYN3/Bot-Discord-Addict.git
 cd Bot-Discord-Addict
 
-# Créez le fichier .env
+# 3. Créer et configurer le .env
 cp .env.example .env
 nano .env  # Ajoutez votre token et IDs
 
-# Installez les dépendances
-pip install -r requirements.txt
+# 4. Installer et lancer
+npm install
+node bot.js
 
-# Lancez le bot (avec screen ou tmux pour qu'il reste actif)
+# 5. Pour garder le bot actif (avec screen)
 screen -S discord-bot
-python bot.py
-# Ctrl+A puis D pour détacher la session
+node bot.js
+# Ctrl+A puis D pour détacher
+
+# Pour revenir à la session
+screen -r discord-bot
 ```
 
 ### Mettre à jour le bot sur le VPS
+
 ```bash
 cd Bot-Discord-Addict
 git pull
+npm install  # Au cas où il y aurait de nouvelles dépendances
 # Redémarrez le bot
+```
+
+## Avec systemd (service automatique)
+
+Pour que le bot démarre automatiquement au démarrage du VPS :
+
+Créez `/etc/systemd/system/discord-bot.service`:
+
+```ini
+[Unit]
+Description=Bot Discord Règlement
+After=network.target
+
+[Service]
+Type=simple
+User=votre_user
+WorkingDirectory=/home/votre_user/bot/Bot-Discord-Addict
+ExecStart=/usr/bin/node bot.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Puis :
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable discord-bot
+sudo systemctl start discord-bot
+sudo systemctl status discord-bot
+
+# Pour voir les logs
+sudo journalctl -u discord-bot -f
 ```
 
 ## Sécurité
@@ -288,8 +348,15 @@ git pull
 - Utilisez `.env.example` comme modèle pour les autres développeurs
 - Sur le VPS, créez le `.env` manuellement, ne le clonez jamais depuis Git
 
+## Technologies utilisées
+
+- **Node.js** v16.9.0+
+- **discord.js** v14
+- **dotenv** pour la gestion des variables d'environnement
+
 ## Améliorations futures possibles
 
+- Slash commands (/)
 - Système de rôles multiples
 - Commande pour modifier le règlement sans toucher au code
 - Support de plusieurs langues
@@ -300,8 +367,8 @@ git pull
 ## Support
 
 Si vous rencontrez des problèmes, vérifiez:
-1. Que Python 3.8+ est installé
-2. Que les dépendances sont installées
+1. Que Node.js 16.9+ est installé: `node --version`
+2. Que les dépendances sont installées: `npm install`
 3. Que le fichier `.env` existe et est correctement configuré
 4. Que les permissions Discord sont bien configurées
 5. Que les intents sont activés dans le Developer Portal
@@ -309,3 +376,9 @@ Si vous rencontrez des problèmes, vérifiez:
 ## Licence
 
 Ce projet est libre d'utilisation. N'hésitez pas à le modifier selon vos besoins !
+
+## Auteur
+
+**ADR3N4LYN3** - [GitHub](https://github.com/ADR3N4LYN3)
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

@@ -1,0 +1,25 @@
+{
+  "name": "bot-discord-addict",
+  "version": "1.0.0",
+  "description": "Bot Discord pour gérer le règlement du serveur avec système de validation",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node bot.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "rules",
+    "validation"
+  ],
+  "author": "ADR3N4LYN3",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.1"
+  },
+  "engines": {
+    "node": ">=16.9.0"
+  }
+}
