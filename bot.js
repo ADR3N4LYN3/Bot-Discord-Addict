@@ -130,42 +130,37 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.commandName === 'reglement') {
         // Créer l'embed pour le règlement
         const embed = new EmbedBuilder()
-            .setTitle('📜 RÈGLEMENT DU SERVEUR')
-            .setDescription('Veuillez lire attentivement le règlement ci-dessous :')
-            .setColor(0x0099FF)
+            .setTitle('🎮 LES RÈGLES DU SERV')
+            .setDescription('Yo ! Bienvenue chez nous. On est chill mais y\'a quand même quelques trucs à respecter :')
+            .setColor(0x9B59B6)
             .addFields(
                 {
-                    name: '1️⃣ Respect',
-                    value: 'Respectez tous les membres du serveur. Aucun harcèlement, insulte ou discrimination ne sera toléré.',
+                    name: '🚫 Pas de BEG',
+                    value: 'On partage si on veut, demande pas à tout le monde. Tu cherches des ressources ? Demande gentiment, une fois.',
                     inline: false
                 },
                 {
-                    name: '2️⃣ Langage',
-                    value: 'Utilisez un langage approprié. Le spam et les messages en majuscules sont interdits.',
+                    name: '🛡️ Pas de SCAM',
+                    value: 'Arnaques, liens douteux, fausses promesses... On veut pas de ça ici. Respect.',
                     inline: false
                 },
                 {
-                    name: '3️⃣ Contenu',
-                    value: "Aucun contenu NSFW, illégal ou offensant n'est autorisé sur ce serveur.",
+                    name: '😎 Full CHILL',
+                    value: 'On est là pour passer du bon temps. Pas de drama, pas de prise de tête. On reste zen.',
                     inline: false
                 },
                 {
-                    name: '4️⃣ Publicité',
-                    value: "La publicité non sollicitée pour d'autres serveurs Discord ou services est interdite.",
+                    name: '🎯 ON EST ADULTES',
+                    value: 'On sait se gérer, on a pas besoin d\'une grosse modération. Tu connais les limites, on compte sur toi.',
                     inline: false
                 },
                 {
-                    name: '5️⃣ Salons',
-                    value: 'Utilisez les salons appropriés pour vos discussions.',
-                    inline: false
-                },
-                {
-                    name: '✅ Validation',
-                    value: `Pour accepter le règlement et accéder au serveur, réagissez avec ${config.emoji} ci-dessous.`,
+                    name: '✨ C\'EST TOUT !',
+                    value: `Simple non ? Si t'es ok avec ça, clique sur ${config.emoji} pour accéder au serveur !`,
                     inline: false
                 }
             )
-            .setFooter({ text: 'Merci de faire partie de notre communauté !' });
+            .setFooter({ text: 'Bienvenue dans la communauté ✌️' });
 
         try {
             // Répondre à l'interaction de manière éphémère
