@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits, ActivityType, SlashCommandBuilder, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits, ActivityType, SlashCommandBuilder, REST, Routes, MessageFlags } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -169,7 +169,7 @@ client.on('interactionCreate', async (interaction) => {
 
         try {
             // Répondre à l'interaction de manière éphémère
-            await interaction.reply({ content: '✅ Règlement posté !', ephemeral: true });
+            await interaction.reply({ content: '✅ Règlement posté !', flags: MessageFlags.Ephemeral });
 
             // Envoyer l'embed dans le channel
             const ruleMessage = await interaction.channel.send({ embeds: [embed] });
