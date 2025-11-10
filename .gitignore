@@ -1,5 +1,6 @@
 # Configuration sensible
 .env
+config.json
 
 # Node.js
 node_modules/
