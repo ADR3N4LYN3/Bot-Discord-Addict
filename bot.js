@@ -9,6 +9,11 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 const VERIFIED_ROLE_ID = process.env.VERIFIED_ROLE_ID || '0';
 const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID || '0';
+const POLL_ROLE_IDS = process.env.POLL_ROLE_IDS || '0';
+
+// Variables globales pour les sondages
+const activePollTimers = new Map();
+const numberEmojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
 
 // Charger la configuration non-sensible
 let config;
@@ -29,7 +34,47 @@ const commands = [
     new SlashCommandBuilder()
         .setName('information')
         .setDescription('Poste les informations importantes du serveur')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
+        .setName('poll')
+        .setDescription('Créer un sondage interactif')
+        .addStringOption(option =>
+            option.setName('question')
+                .setDescription('La question du sondage')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('options')
+                .setDescription('Les options séparées par des points-virgules (;) - Maximum 10')
+                .setRequired(true))
+        .addIntegerOption(option =>
+            option.setName('duree')
+                .setDescription('Durée du sondage en minutes')
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(10080)) // 7 jours max
+        .addStringOption(option =>
+            option.setName('type')
+                .setDescription('Type de vote')
+                .setRequired(true)
+                .addChoices(
+                    { name: '🔘 Vote unique (un seul choix)', value: 'unique' },
+                    { name: '☑️ Votes multiples (plusieurs choix possibles)', value: 'multiple' }
+                )),
+    new SlashCommandBuilder()
+        .setName('poll-close')
+        .setDescription('Fermer un sondage manuellement')
+        .addStringOption(option =>
+            option.setName('message_id')
+                .setDescription('ID du message du sondage à fermer')
+                .setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('poll-history')
+        .setDescription('Afficher l\'historique des sondages')
+        .addIntegerOption(option =>
+            option.setName('page')
+                .setDescription('Numéro de page (5 sondages par page)')
+                .setRequired(false)
+                .setMinValue(1))
 ].map(command => command.toJSON());
 
 // Créer le client Discord
@@ -81,6 +126,184 @@ function saveConfig() {
 }
 
 /**
+ * Vérifie si un membre a les rôles requis pour créer des sondages
+ */
+function hasRequiredRole(member) {
+    // Si POLL_ROLE_IDS est à '0', tout le monde peut créer des sondages
+    if (POLL_ROLE_IDS === '0') return true;
+
+    // Vérifier si c'est un admin
+    if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+
+    // Vérifier si le membre a l'un des rôles autorisés
+    const allowedRoleIds = POLL_ROLE_IDS.split(',').map(id => id.trim());
+    return allowedRoleIds.some(roleId => member.roles.cache.has(roleId));
+}
+
+/**
+ * Formate le temps restant pour un sondage
+ */
+function formatTimeRemaining(endTime) {
+    const now = Date.now();
+    const remaining = endTime - now;
+
+    if (remaining <= 0) return 'Terminé';
+
+    const days = Math.floor(remaining / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (days > 0) return `${days}j ${hours}h ${minutes}min`;
+    if (hours > 0) return `${hours}h ${minutes}min`;
+    return `${minutes}min`;
+}
+
+/**
+ * Met à jour l'embed d'un sondage avec les votes actuels
+ */
+async function updatePollEmbed(message, pollData) {
+    try {
+        const totalVotes = Object.values(pollData.votes).reduce((sum, voters) => sum + voters.length, 0);
+
+        // Créer la description avec les options et les votes
+        let description = '';
+        pollData.options.forEach((option, index) => {
+            const voters = pollData.votes[index] || [];
+            const percentage = totalVotes > 0 ? Math.round((voters.length / totalVotes) * 100) : 0;
+
+            description += `\n${numberEmojis[index]} **${option}**\n`;
+            description += `└ ${voters.length} vote(s) (${percentage}%)\n`;
+
+            // Afficher qui a voté (max 5 noms affichés)
+            if (voters.length > 0) {
+                const voterMentions = voters.slice(0, 5).map(userId => `<@${userId}>`).join(', ');
+                const remaining = voters.length > 5 ? ` +${voters.length - 5}` : '';
+                description += `   ${voterMentions}${remaining}\n`;
+            }
+        });
+
+        const typeIcon = pollData.type === 'unique' ? '🔘' : '☑️';
+        const typeText = pollData.type === 'unique' ? 'Vote unique' : 'Votes multiples';
+
+        const embed = new EmbedBuilder()
+            .setColor(0xFF9900)
+            .setTitle(`📊 ${pollData.question}`)
+            .setDescription(description)
+            .addFields(
+                { name: 'Type de vote', value: `${typeIcon} ${typeText}`, inline: true },
+                { name: 'Temps restant', value: `⏱️ ${formatTimeRemaining(pollData.endsAt)}`, inline: true },
+                { name: 'Total de votes', value: `${totalVotes}`, inline: true }
+            )
+            .setFooter({ text: 'Réagis avec les emojis pour voter !' })
+            .setTimestamp(pollData.createdAt);
+
+        await message.edit({ embeds: [embed] });
+    } catch (error) {
+        console.error('❌ Erreur lors de la mise à jour de l\'embed:', error);
+    }
+}
+
+/**
+ * Ferme un sondage et affiche les résultats finaux
+ */
+async function closePoll(messageId, reason = 'automatique') {
+    const pollData = config.active_polls[messageId];
+    if (!pollData) return;
+
+    try {
+        const channel = await client.channels.fetch(pollData.channelId);
+        const message = await channel.messages.fetch(messageId);
+
+        // Calculer les résultats
+        const totalVotes = Object.values(pollData.votes).reduce((sum, voters) => sum + voters.length, 0);
+        let maxVotes = 0;
+        let winners = [];
+
+        pollData.options.forEach((option, index) => {
+            const votes = (pollData.votes[index] || []).length;
+            if (votes > maxVotes) {
+                maxVotes = votes;
+                winners = [option];
+            } else if (votes === maxVotes && votes > 0) {
+                winners.push(option);
+            }
+        });
+
+        // Créer l'embed des résultats finaux
+        let resultsDescription = '**Résultats finaux :**\n\n';
+        pollData.options.forEach((option, index) => {
+            const voters = pollData.votes[index] || [];
+            const percentage = totalVotes > 0 ? Math.round((voters.length / totalVotes) * 100) : 0;
+            const isWinner = winners.includes(option) && maxVotes > 0;
+
+            resultsDescription += `${numberEmojis[index]} **${option}** ${isWinner ? '🏆' : ''}\n`;
+            resultsDescription += `└ ${voters.length} vote(s) (${percentage}%)\n\n`;
+        });
+
+        if (maxVotes === 0) {
+            resultsDescription += '\n❌ Aucun vote enregistré';
+        } else if (winners.length === 1) {
+            resultsDescription += `\n🏆 **Gagnant :** ${winners[0]} avec ${maxVotes} vote(s)`;
+        } else {
+            resultsDescription += `\n🏆 **Égalité entre :** ${winners.join(', ')} avec ${maxVotes} vote(s) chacun`;
+        }
+
+        const finalEmbed = new EmbedBuilder()
+            .setColor(0x95A5A6)
+            .setTitle(`🔒 ${pollData.question}`)
+            .setDescription(resultsDescription)
+            .addFields(
+                { name: 'Total de votes', value: `${totalVotes}`, inline: true },
+                { name: 'Fermeture', value: reason === 'automatique' ? '⏰ Automatique' : '🛑 Manuelle', inline: true }
+            )
+            .setFooter({ text: 'Sondage terminé' })
+            .setTimestamp();
+
+        await message.edit({ embeds: [finalEmbed] });
+
+        // Retirer toutes les réactions
+        await message.reactions.removeAll().catch(() => {});
+
+        // Sauvegarder dans l'historique
+        savePollToHistory({
+            ...pollData,
+            messageId,
+            closedAt: Date.now(),
+            totalVotes,
+            winners,
+            reason
+        });
+
+        // Logger
+        await sendLog(message.guild, `📊 Sondage terminé (${reason}) : "${pollData.question}" - ${totalVotes} vote(s)`);
+
+        // Supprimer du tableau des sondages actifs
+        delete config.active_polls[messageId];
+        saveConfig();
+
+        // Annuler le timer s'il existe
+        if (activePollTimers.has(messageId)) {
+            clearTimeout(activePollTimers.get(messageId));
+            activePollTimers.delete(messageId);
+        }
+    } catch (error) {
+        console.error(`❌ Erreur lors de la fermeture du sondage ${messageId}:`, error);
+    }
+}
+
+/**
+ * Sauvegarde un sondage dans l'historique
+ */
+function savePollToHistory(pollData) {
+    // Garder seulement les 20 derniers sondages
+    config.poll_history.unshift(pollData);
+    if (config.poll_history.length > 20) {
+        config.poll_history = config.poll_history.slice(0, 20);
+    }
+    saveConfig();
+}
+
+/**
  * Enregistre les slash commands auprès de Discord
  */
 async function registerCommands() {
@@ -119,6 +342,34 @@ client.once('clientReady', async () => {
     console.log(`Attribution de rôle: ${VERIFIED_ROLE_ID !== '0' ? '✅ Activée' : '❌ Désactivée'}`);
     console.log(`Logs Discord: ${LOG_CHANNEL_ID !== '0' ? '✅ Activés' : '❌ Désactivés'}`);
     console.log('------');
+
+    // Restaurer les timers des sondages actifs
+    const activePolls = Object.keys(config.active_polls || {});
+    if (activePolls.length > 0) {
+        console.log(`🔄 Restauration de ${activePolls.length} sondage(s) actif(s)...`);
+
+        for (const messageId of activePolls) {
+            const pollData = config.active_polls[messageId];
+            const now = Date.now();
+            const remaining = pollData.endsAt - now;
+
+            if (remaining <= 0) {
+                // Le sondage aurait dû être fermé
+                console.log(`⏰ Fermeture du sondage expiré : "${pollData.question}"`);
+                await closePoll(messageId, 'automatique');
+            } else {
+                // Recréer le timer
+                const timer = setTimeout(() => {
+                    closePoll(messageId, 'automatique');
+                }, remaining);
+
+                activePollTimers.set(messageId, timer);
+                console.log(`✅ Timer restauré pour : "${pollData.question}" (${Math.round(remaining / 60000)} min restantes)`);
+            }
+        }
+
+        console.log('------');
+    }
 
     // Définir l'activité/statut du bot
     client.user.setPresence({
@@ -236,6 +487,200 @@ client.on('interactionCreate', async (interaction) => {
             await interaction.editReply({ content: '❌ Erreur lors de la publication des informations.' });
         }
     }
+
+    // Commande /poll
+    if (interaction.commandName === 'poll') {
+        // Vérifier les permissions
+        if (!hasRequiredRole(interaction.member)) {
+            return interaction.reply({
+                content: '❌ Vous n\'avez pas la permission de créer des sondages.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        const question = interaction.options.getString('question');
+        const optionsString = interaction.options.getString('options');
+        const duration = interaction.options.getInteger('duree');
+        const type = interaction.options.getString('type');
+
+        // Parser les options
+        const options = optionsString.split(';').map(opt => opt.trim()).filter(opt => opt.length > 0);
+
+        // Valider le nombre d'options
+        if (options.length < 2) {
+            return interaction.reply({
+                content: '❌ Il faut au moins 2 options pour créer un sondage.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        if (options.length > 10) {
+            return interaction.reply({
+                content: '❌ Maximum 10 options autorisées.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        try {
+            // Créer l'embed initial
+            const now = Date.now();
+            const endsAt = now + (duration * 60 * 1000);
+
+            let description = '';
+            options.forEach((option, index) => {
+                description += `\n${numberEmojis[index]} **${option}**\n`;
+                description += `└ 0 vote(s) (0%)\n`;
+            });
+
+            const typeIcon = type === 'unique' ? '🔘' : '☑️';
+            const typeText = type === 'unique' ? 'Vote unique' : 'Votes multiples';
+
+            const embed = new EmbedBuilder()
+                .setColor(0xFF9900)
+                .setTitle(`📊 ${question}`)
+                .setDescription(description)
+                .addFields(
+                    { name: 'Type de vote', value: `${typeIcon} ${typeText}`, inline: true },
+                    { name: 'Temps restant', value: `⏱️ ${formatTimeRemaining(endsAt)}`, inline: true },
+                    { name: 'Total de votes', value: '0', inline: true }
+                )
+                .setFooter({ text: 'Réagis avec les emojis pour voter !' })
+                .setTimestamp(now);
+
+            // Répondre à l'interaction
+            await interaction.reply({ content: '✅ Sondage créé avec succès !', flags: MessageFlags.Ephemeral });
+
+            // Envoyer le sondage
+            const pollMessage = await interaction.channel.send({ embeds: [embed] });
+
+            // Ajouter les réactions
+            for (let i = 0; i < options.length; i++) {
+                await pollMessage.react(numberEmojis[i]);
+            }
+
+            // Créer les données du sondage
+            const pollData = {
+                messageId: pollMessage.id,
+                channelId: interaction.channel.id,
+                question,
+                options,
+                type,
+                createdBy: interaction.user.id,
+                createdAt: now,
+                endsAt,
+                votes: {}
+            };
+
+            // Initialiser les votes vides
+            options.forEach((_, index) => {
+                pollData.votes[index] = [];
+            });
+
+            // Sauvegarder dans la config
+            config.active_polls[pollMessage.id] = pollData;
+            saveConfig();
+
+            // Créer un timer pour fermer automatiquement le sondage
+            const timer = setTimeout(() => {
+                closePoll(pollMessage.id, 'automatique');
+            }, duration * 60 * 1000);
+
+            activePollTimers.set(pollMessage.id, timer);
+
+            // Logger
+            await sendLog(interaction.guild, `📊 Nouveau sondage créé par **${interaction.user}** : "${question}" (${duration} min)`);
+
+            console.log(`✅ Sondage créé : "${question}" - ID: ${pollMessage.id}`);
+        } catch (error) {
+            console.error('❌ Erreur lors de la création du sondage:', error);
+            await interaction.editReply({ content: '❌ Erreur lors de la création du sondage.' });
+        }
+    }
+
+    // Commande /poll-close
+    if (interaction.commandName === 'poll-close') {
+        const messageId = interaction.options.getString('message_id');
+
+        // Vérifier que le sondage existe
+        const pollData = config.active_polls[messageId];
+        if (!pollData) {
+            return interaction.reply({
+                content: '❌ Aucun sondage actif trouvé avec cet ID.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        // Vérifier les permissions (créateur du sondage ou admin)
+        const isCreator = pollData.createdBy === interaction.user.id;
+        const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+        if (!isCreator && !isAdmin) {
+            return interaction.reply({
+                content: '❌ Seul le créateur du sondage ou un administrateur peut le fermer.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        try {
+            await closePoll(messageId, 'manuelle');
+            await interaction.reply({
+                content: '✅ Le sondage a été fermé avec succès !',
+                flags: MessageFlags.Ephemeral
+            });
+        } catch (error) {
+            console.error('❌ Erreur lors de la fermeture du sondage:', error);
+            await interaction.reply({
+                content: '❌ Erreur lors de la fermeture du sondage.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+    }
+
+    // Commande /poll-history
+    if (interaction.commandName === 'poll-history') {
+        const page = interaction.options.getInteger('page') || 1;
+        const perPage = 5;
+
+        if (config.poll_history.length === 0) {
+            return interaction.reply({
+                content: '📊 Aucun sondage dans l\'historique.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        const totalPages = Math.ceil(config.poll_history.length / perPage);
+        const startIndex = (page - 1) * perPage;
+        const endIndex = startIndex + perPage;
+        const pagePolls = config.poll_history.slice(startIndex, endIndex);
+
+        if (pagePolls.length === 0) {
+            return interaction.reply({
+                content: `❌ La page ${page} n'existe pas. Il y a ${totalPages} page(s) au total.`,
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x3498DB)
+            .setTitle('📊 Historique des sondages')
+            .setFooter({ text: `Page ${page}/${totalPages} • Total: ${config.poll_history.length} sondage(s)` });
+
+        pagePolls.forEach((poll, index) => {
+            const pollNumber = startIndex + index + 1;
+            const date = new Date(poll.closedAt).toLocaleString('fr-FR');
+            const winnersText = poll.winners && poll.winners.length > 0
+                ? `🏆 ${poll.winners.join(', ')}`
+                : '❌ Aucun vote';
+
+            embed.addFields({
+                name: `${pollNumber}. ${poll.question}`,
+                value: `**Votes:** ${poll.totalVotes} • **Date:** ${date}\n${winnersText}`,
+                inline: false
+            });
+        });
+
+        await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    }
 });
 
 // Événement : Réaction ajoutée
@@ -253,6 +698,54 @@ client.on('messageReactionAdd', async (reaction, user) => {
         }
     }
 
+    // GESTION DES VOTES DE SONDAGES
+    const pollData = config.active_polls[reaction.message.id];
+    if (pollData) {
+        // C'est un sondage actif
+        const emojiName = reaction.emoji.name;
+        const optionIndex = numberEmojis.indexOf(emojiName);
+
+        // Vérifier que c'est un emoji valide pour ce sondage
+        if (optionIndex === -1 || optionIndex >= pollData.options.length) {
+            // Emoji non valide, le retirer
+            await reaction.users.remove(user.id).catch(() => {});
+            return;
+        }
+
+        // Si c'est un vote unique, retirer les autres réactions de cet utilisateur
+        if (pollData.type === 'unique') {
+            for (let i = 0; i < pollData.options.length; i++) {
+                if (i !== optionIndex && pollData.votes[i].includes(user.id)) {
+                    // Retirer le vote précédent
+                    pollData.votes[i] = pollData.votes[i].filter(id => id !== user.id);
+
+                    // Retirer la réaction visuellement
+                    const oldReaction = reaction.message.reactions.cache.get(numberEmojis[i]);
+                    if (oldReaction) {
+                        await oldReaction.users.remove(user.id).catch(() => {});
+                    }
+                }
+            }
+        }
+
+        // Ajouter le vote s'il n'existe pas déjà
+        if (!pollData.votes[optionIndex].includes(user.id)) {
+            pollData.votes[optionIndex].push(user.id);
+
+            // Sauvegarder
+            config.active_polls[reaction.message.id] = pollData;
+            saveConfig();
+
+            // Mettre à jour l'embed
+            await updatePollEmbed(reaction.message, pollData);
+
+            console.log(`✅ Vote enregistré : ${user.tag} -> Option ${optionIndex + 1} sur le sondage "${pollData.question}"`);
+        }
+
+        return;
+    }
+
+    // GESTION DU RÈGLEMENT (code existant)
     // Vérifier si c'est le message du règlement
     if (reaction.message.id !== config.rules_message_id) return;
 
@@ -313,6 +806,36 @@ client.on('messageReactionRemove', async (reaction, user) => {
         }
     }
 
+    // GESTION DES VOTES DE SONDAGES
+    const pollData = config.active_polls[reaction.message.id];
+    if (pollData) {
+        // C'est un sondage actif
+        const emojiName = reaction.emoji.name;
+        const optionIndex = numberEmojis.indexOf(emojiName);
+
+        // Vérifier que c'est un emoji valide pour ce sondage
+        if (optionIndex === -1 || optionIndex >= pollData.options.length) {
+            return;
+        }
+
+        // Retirer le vote s'il existe
+        if (pollData.votes[optionIndex].includes(user.id)) {
+            pollData.votes[optionIndex] = pollData.votes[optionIndex].filter(id => id !== user.id);
+
+            // Sauvegarder
+            config.active_polls[reaction.message.id] = pollData;
+            saveConfig();
+
+            // Mettre à jour l'embed
+            await updatePollEmbed(reaction.message, pollData);
+
+            console.log(`❌ Vote retiré : ${user.tag} -> Option ${optionIndex + 1} sur le sondage "${pollData.question}"`);
+        }
+
+        return;
+    }
+
+    // GESTION DU RÈGLEMENT (code existant)
     // Vérifier si c'est le message du règlement
     if (reaction.message.id !== config.rules_message_id) return;
 

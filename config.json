@@ -1,5 +1,7 @@
 {
     "emoji": "✅",
     "rules_message_id": null,
-    "rules_channel_id": null
+    "rules_channel_id": null,
+    "active_polls": {},
+    "poll_history": []
 }
