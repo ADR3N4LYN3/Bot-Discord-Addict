@@ -187,8 +187,13 @@ client.on('interactionCreate', async (interaction) => {
 
 // Événement : Réaction ajoutée
 client.on('messageReactionAdd', async (reaction, user) => {
+    console.log(`[DEBUG] Réaction détectée: ${reaction.emoji.name} par ${user.tag}`);
+
     // Ignorer les réactions du bot
-    if (user.bot) return;
+    if (user.bot) {
+        console.log('[DEBUG] Réaction du bot ignorée');
+        return;
+    }
 
     // Si la réaction est partielle, la récupérer
     if (reaction.partial) {
@@ -200,11 +205,22 @@ client.on('messageReactionAdd', async (reaction, user) => {
         }
     }
 
+    console.log(`[DEBUG] Message ID: ${reaction.message.id}, Config ID: ${config.rules_message_id}`);
+    console.log(`[DEBUG] Emoji: ${reaction.emoji.name}, Config Emoji: ${config.emoji}`);
+
     // Vérifier si c'est le message du règlement
-    if (reaction.message.id !== config.rules_message_id) return;
+    if (reaction.message.id !== config.rules_message_id) {
+        console.log('[DEBUG] Pas le bon message');
+        return;
+    }
 
     // Vérifier si c'est le bon emoji
-    if (reaction.emoji.name !== config.emoji) return;
+    if (reaction.emoji.name !== config.emoji) {
+        console.log('[DEBUG] Pas le bon emoji');
+        return;
+    }
+
+    console.log('[DEBUG] Validation détectée!');
 
     const guild = reaction.message.guild;
     const member = guild.members.cache.get(user.id);
