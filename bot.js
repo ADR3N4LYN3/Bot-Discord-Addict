@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits, ActivityType } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits, ActivityType, SlashCommandBuilder, REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -17,6 +17,14 @@ try {
     console.error('❌ Erreur lors du chargement de config.json:', error.message);
     process.exit(1);
 }
+
+// Définition de la slash command
+const commands = [
+    new SlashCommandBuilder()
+        .setName('reglement')
+        .setDescription('Poste le règlement du serveur avec validation par réaction')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+].map(command => command.toJSON());
 
 // Créer le client Discord
 const client = new Client({
@@ -66,12 +74,37 @@ function saveConfig() {
     }
 }
 
+/**
+ * Enregistre les slash commands auprès de Discord
+ */
+async function registerCommands() {
+    const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+
+    try {
+        console.log('🔄 Enregistrement des slash commands...');
+
+        // Enregistrer les commandes globalement (disponibles sur tous les serveurs)
+        await rest.put(
+            Routes.applicationCommands(client.user.id),
+            { body: commands }
+        );
+
+        console.log('✅ Slash commands enregistrées avec succès !');
+    } catch (error) {
+        console.error('❌ Erreur lors de l\'enregistrement des slash commands:', error);
+    }
+}
+
 // Événement : Bot prêt
-client.once('clientReady', () => {
+client.once('clientReady', async () => {
     console.log(`${client.user.tag} est connecté et prêt !`);
     console.log(`ID du bot: ${client.user.id}`);
     console.log('------');
-    console.log(`!reglement enregistré sur`);
+
+    // Enregistrer les slash commands
+    await registerCommands();
+
+    console.log('------');
     console.log(`Actif sur ${client.guilds.cache.size} serveur(s)`);
     console.log('------');
     console.log(`Attribution de rôle: ${VERIFIED_ROLE_ID !== '0' ? '✅ Activée' : '❌ Désactivée'}`);
@@ -88,18 +121,13 @@ client.once('clientReady', () => {
     });
 });
 
-// Événement : Message reçu
-client.on('messageCreate', async (message) => {
-    // Ignorer les messages du bot
-    if (message.author.bot) return;
+// Événement : Interaction (slash command)
+client.on('interactionCreate', async (interaction) => {
+    // Vérifier que c'est une commande
+    if (!interaction.isChatInputCommand()) return;
 
-    // Vérifier si c'est la commande !reglement
-    if (message.content === '!reglement') {
-        // Vérifier les permissions administrateur
-        if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return message.reply('❌ Vous devez être administrateur pour utiliser cette commande.');
-        }
-
+    // Commande /reglement
+    if (interaction.commandName === 'reglement') {
         // Créer l'embed pour le règlement
         const embed = new EmbedBuilder()
             .setTitle('📜 RÈGLEMENT DU SERVEUR')
@@ -140,23 +168,24 @@ client.on('messageCreate', async (message) => {
             .setFooter({ text: 'Merci de faire partie de notre communauté !' });
 
         try {
-            // Supprimer le message de commande
-            await message.delete();
+            // Répondre à l'interaction de manière éphémère
+            await interaction.reply({ content: '✅ Règlement posté !', ephemeral: true });
 
-            // Envoyer l'embed
-            const ruleMessage = await message.channel.send({ embeds: [embed] });
+            // Envoyer l'embed dans le channel
+            const ruleMessage = await interaction.channel.send({ embeds: [embed] });
 
             // Ajouter la réaction
             await ruleMessage.react(config.emoji);
 
             // Sauvegarder l'ID du message dans la config
             config.rules_message_id = ruleMessage.id;
-            config.rules_channel_id = message.channel.id;
+            config.rules_channel_id = interaction.channel.id;
             saveConfig();
 
             console.log(`Règlement posté ! ID du message: ${ruleMessage.id}`);
         } catch (error) {
             console.error('❌ Erreur lors de la publication du règlement:', error.message);
+            await interaction.editReply({ content: '❌ Erreur lors de la publication du règlement.' });
         }
     }
 });

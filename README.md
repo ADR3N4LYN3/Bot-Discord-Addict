@@ -133,7 +133,7 @@ Le bot apparaîtra en ligne avec le statut **"🔍 Check les arrivées"**.
 
 1. Dans le salon #règlement (ou autre) de votre serveur, tapez:
 ```
-!reglement
+/reglement
 ```
 
 2. Le bot va:
@@ -266,7 +266,7 @@ Bot-Discord-Addict/
 
 | Commande | Description | Permission requise |
 |----------|-------------|-------------------|
-| `!reglement` | Poste le message du règlement | Administrateur |
+| `/reglement` | Poste le message du règlement | Administrateur |
 
 ## Déploiement sur VPS
 
