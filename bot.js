@@ -197,7 +197,7 @@ client.on('interactionCreate', async (interaction) => {
             .addFields(
                 {
                     name: '🎁 Giveaway',
-                    value: 'Utilise la commande /giveaway dans le salon prévu pour en créer un.\n\n⚠️ Un giveaway t\'engage. Une fois lancé, tu dois récompenser le/les gagnants avec la somme annoncée, dans la monnaie de ton choix.',
+                    value: '**Pour créer :** utilise la commande /giveaway dans <#1437389780181581964>\n**Tu as gagné :** penses à dire merci et envoi ton pseudo stake dans le salon\n\n⚠️ Un giveaway t\'engage. Une fois lancé, tu dois récompenser le/les gagnants avec la somme annoncée, dans la monnaie de ton choix.',
                     inline: false
                 },
                 {
