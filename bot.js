@@ -67,7 +67,7 @@ function saveConfig() {
 }
 
 // Événement : Bot prêt
-client.once('ready', () => {
+client.once('clientReady', () => {
     console.log(`${client.user.tag} est connecté et prêt !`);
     console.log(`ID du bot: ${client.user.id}`);
     console.log('------');
