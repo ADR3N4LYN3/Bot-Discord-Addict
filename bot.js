@@ -312,21 +312,12 @@ async function registerCommands() {
     try {
         console.log('🔄 Enregistrement des slash commands...');
 
-        if (GUILD_ID) {
-            // Mode Guild : les commandes apparaissent instantanément
-            await rest.put(
-                Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-                { body: commands }
-            );
-            console.log(`✅ Slash commands enregistrées avec succès pour le serveur ${GUILD_ID} !`);
-        } else {
-            // Mode Global : peut prendre jusqu'à 1 heure
-            await rest.put(
-                Routes.applicationCommands(CLIENT_ID),
-                { body: commands }
-            );
-            console.log('✅ Slash commands enregistrées globalement (peut prendre jusqu\'à 1h) !');
-        }
+        // Mode Guild : les commandes apparaissent instantanément
+        await rest.put(
+            Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+            { body: commands }
+        );
+        console.log(`✅ Slash commands enregistrées avec succès pour le serveur ${GUILD_ID} !`);
     } catch (error) {
         console.error('❌ Erreur lors de l\'enregistrement des slash commands:', error);
     }
