@@ -48,10 +48,10 @@ const commands = [
                 .setRequired(true))
         .addIntegerOption(option =>
             option.setName('duree')
-                .setDescription('Durée du sondage en minutes')
+                .setDescription('Durée du sondage en jours')
                 .setRequired(true)
                 .setMinValue(1)
-                .setMaxValue(10080)) // 7 jours max
+                .setMaxValue(30)) // 30 jours max
         .addStringOption(option =>
             option.setName('type')
                 .setDescription('Type de vote')
@@ -513,7 +513,7 @@ client.on('interactionCreate', async (interaction) => {
         try {
             // Créer l'embed initial
             const now = Date.now();
-            const endsAt = now + (duration * 60 * 1000);
+            const endsAt = now + (duration * 24 * 60 * 60 * 1000);
 
             let description = '';
             options.forEach((option, index) => {
@@ -572,12 +572,12 @@ client.on('interactionCreate', async (interaction) => {
             // Créer un timer pour fermer automatiquement le sondage
             const timer = setTimeout(() => {
                 closePoll(pollMessage.id, 'automatique');
-            }, duration * 60 * 1000);
+            }, duration * 24 * 60 * 60 * 1000);
 
             activePollTimers.set(pollMessage.id, timer);
 
             // Logger
-            await sendLog(interaction.guild, `📊 Nouveau sondage créé par **${interaction.user}** : "${question}" (${duration} min)`);
+            await sendLog(interaction.guild, `📊 Nouveau sondage créé par **${interaction.user}** : "${question}" (${duration}j)`);
 
             console.log(`✅ Sondage créé : "${question}" - ID: ${pollMessage.id}`);
         } catch (error) {
