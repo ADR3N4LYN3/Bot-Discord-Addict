@@ -77,7 +77,7 @@ const commands = [
                 .setMinValue(1))
 ].map(command => command.toJSON());
 
-// Créer le client Discord
+// Créer le client Discord avec options de reconnexion
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -85,8 +85,22 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.GuildMembers
-    ]
+    ],
+    // Options pour améliorer la stabilité
+    failIfNotExists: false,
+    restTimeOffset: 0,
+    restRequestTimeout: 15000,
+    retryLimit: 3
 });
+
+/**
+ * Logs avec horodatage
+ */
+function logWithTimestamp(message, level = 'INFO') {
+    const timestamp = new Date().toISOString();
+    const prefix = `[${timestamp}] [${level}]`;
+    console.log(`${prefix} ${message}`);
+}
 
 /**
  * Envoie un message dans le channel de logs si configuré
@@ -325,14 +339,14 @@ async function registerCommands() {
 
 // Événement : Bot prêt
 client.once('clientReady', async () => {
-    console.log(`${client.user.tag} est connecté et prêt !`);
-    console.log(`ID du bot: ${client.user.id}`);
-    console.log('------');
-    console.log(`Actif sur ${client.guilds.cache.size} serveur(s)`);
-    console.log('------');
-    console.log(`Attribution de rôle: ${VERIFIED_ROLE_ID !== '0' ? '✅ Activée' : '❌ Désactivée'}`);
-    console.log(`Logs Discord: ${LOG_CHANNEL_ID !== '0' ? '✅ Activés' : '❌ Désactivés'}`);
-    console.log('------');
+    logWithTimestamp(`${client.user.tag} est connecté et prêt !`, 'SUCCESS');
+    logWithTimestamp(`ID du bot: ${client.user.id}`, 'INFO');
+    logWithTimestamp('------', 'INFO');
+    logWithTimestamp(`Actif sur ${client.guilds.cache.size} serveur(s)`, 'INFO');
+    logWithTimestamp('------', 'INFO');
+    logWithTimestamp(`Attribution de rôle: ${VERIFIED_ROLE_ID !== '0' ? '✅ Activée' : '❌ Désactivée'}`, 'INFO');
+    logWithTimestamp(`Logs Discord: ${LOG_CHANNEL_ID !== '0' ? '✅ Activés' : '❌ Désactivés'}`, 'INFO');
+    logWithTimestamp('------', 'INFO');
 
     // Restaurer les timers des sondages actifs
     const activePolls = Object.keys(config.active_polls || {});
@@ -682,18 +696,30 @@ client.on('interactionCreate', async (interaction) => {
 
 // Événement : Réaction ajoutée
 client.on('messageReactionAdd', async (reaction, user) => {
-    // Ignorer les réactions du bot
-    if (user.bot) return;
+    try {
+        // Ignorer les réactions du bot
+        if (user.bot) return;
 
-    // Si la réaction est partielle, la récupérer
-    if (reaction.partial) {
-        try {
-            await reaction.fetch();
-        } catch (error) {
-            console.error('❌ Erreur lors de la récupération de la réaction:', error);
+        logWithTimestamp(`Réaction ajoutée: ${reaction.emoji.name} par ${user.tag} sur message ${reaction.message.id}`, 'DEBUG');
+
+        // Si la réaction est partielle, la récupérer
+        if (reaction.partial) {
+            try {
+                logWithTimestamp(`Récupération de la réaction partielle...`, 'DEBUG');
+                await reaction.fetch();
+                logWithTimestamp(`Réaction partielle récupérée avec succès`, 'DEBUG');
+            } catch (error) {
+                logWithTimestamp(`Erreur lors de la récupération de la réaction partielle: ${error.message}`, 'ERROR');
+                console.error(error.stack);
+                return;
+            }
+        }
+
+        // Vérifier que le message est toujours accessible
+        if (!reaction.message || !reaction.message.guild) {
+            logWithTimestamp(`Message ou guild non accessible pour la réaction`, 'WARN');
             return;
         }
-    }
 
     // GESTION DES VOTES DE SONDAGES
     const pollData = config.active_polls[reaction.message.id];
@@ -742,66 +768,107 @@ client.on('messageReactionAdd', async (reaction, user) => {
         return;
     }
 
-    // GESTION DU RÈGLEMENT (code existant)
-    // Vérifier si c'est le message du règlement
-    if (reaction.message.id !== config.rules_message_id) return;
+        // GESTION DU RÈGLEMENT
+        try {
+            // Vérifier si c'est le message du règlement
+            if (reaction.message.id !== config.rules_message_id) {
+                logWithTimestamp(`Réaction sur un message qui n'est pas le règlement (${reaction.message.id})`, 'DEBUG');
+                return;
+            }
 
-    // Vérifier si c'est le bon emoji
-    if (reaction.emoji.name !== config.emoji) return;
+            logWithTimestamp(`Réaction sur le message du règlement détectée`, 'INFO');
 
-    const guild = reaction.message.guild;
-    const member = guild.members.cache.get(user.id);
+            // Vérifier si c'est le bon emoji
+            if (reaction.emoji.name !== config.emoji) {
+                logWithTimestamp(`Emoji incorrect: ${reaction.emoji.name} (attendu: ${config.emoji})`, 'DEBUG');
+                return;
+            }
 
-    if (!member) return;
+            logWithTimestamp(`Emoji correct détecté: ${config.emoji}`, 'INFO');
 
-    // Attribution de rôle (si configuré)
-    if (VERIFIED_ROLE_ID === '0') {
-        // Pas de rôle configuré, juste logger la validation
-        await sendLog(guild, `✅ **${member}** a accepté le règlement`);
-        console.log(`ℹ️ ${member.user.tag} a accepté le règlement (attribution de rôle désactivée)`);
-        return;
-    }
+            const guild = reaction.message.guild;
+            const member = await guild.members.fetch(user.id).catch(() => null);
 
-    // Vérifier que le membre n'a aucun autre rôle (seulement @everyone)
-    const memberRoles = member.roles.cache.filter(r => r.id !== guild.id); // Exclure @everyone
-    if (memberRoles.size > 0) {
-        console.log(`ℹ️ ${member.user.tag} a déjà des rôles, attribution ignorée`);
-        await sendLog(guild, `✅ **${member}** a accepté le règlement (a déjà des rôles)`);
-        return;
-    }
+            if (!member) {
+                logWithTimestamp(`Membre ${user.tag} non trouvé dans la guild`, 'WARN');
+                return;
+            }
 
-    // Récupérer le rôle à attribuer
-    const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
-    if (!role) {
-        await sendLog(guild, `✅ **${member}** a accepté le règlement\n❌ Erreur: Le rôle avec l'ID ${VERIFIED_ROLE_ID} n'existe pas!`);
-        return;
-    }
+            logWithTimestamp(`Membre ${member.user.tag} trouvé, vérification de l'attribution de rôle...`, 'INFO');
 
-    // Donner le rôle au membre
-    try {
-        await member.roles.add(role);
-        await sendLog(guild, `✅ **${member}** a accepté le règlement et a reçu le rôle **${role.name}**`);
-        console.log(`✅ ${member.user.tag} a validé le règlement et reçu le rôle ${role.name}`);
-    } catch (error) {
-        await sendLog(guild, `✅ **${member}** a accepté le règlement\n❌ Erreur: Pas la permission de donner le rôle`);
-        console.error(error);
+            // Attribution de rôle (si configuré)
+            if (VERIFIED_ROLE_ID === '0') {
+                // Pas de rôle configuré, juste logger la validation
+                await sendLog(guild, `✅ **${member}** a accepté le règlement`);
+                logWithTimestamp(`${member.user.tag} a accepté le règlement (attribution de rôle désactivée)`, 'INFO');
+                return;
+            }
+
+            // Vérifier que le membre n'a aucun autre rôle (seulement @everyone)
+            const memberRoles = member.roles.cache.filter(r => r.id !== guild.id); // Exclure @everyone
+            if (memberRoles.size > 0) {
+                logWithTimestamp(`${member.user.tag} a déjà ${memberRoles.size} rôle(s), attribution ignorée`, 'INFO');
+                await sendLog(guild, `✅ **${member}** a accepté le règlement (a déjà des rôles)`);
+                return;
+            }
+
+            // Récupérer le rôle à attribuer
+            const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
+            if (!role) {
+                logWithTimestamp(`Rôle avec l'ID ${VERIFIED_ROLE_ID} n'existe pas dans la guild`, 'ERROR');
+                await sendLog(guild, `✅ **${member}** a accepté le règlement\n❌ Erreur: Le rôle avec l'ID ${VERIFIED_ROLE_ID} n'existe pas!`);
+                return;
+            }
+
+            logWithTimestamp(`Tentative d'attribution du rôle "${role.name}" à ${member.user.tag}...`, 'INFO');
+
+            // Donner le rôle au membre
+            try {
+                await member.roles.add(role, 'Acceptation du règlement');
+                await sendLog(guild, `✅ **${member}** a accepté le règlement et a reçu le rôle **${role.name}**`);
+                logWithTimestamp(`✅ ${member.user.tag} a validé le règlement et reçu le rôle ${role.name}`, 'SUCCESS');
+            } catch (roleError) {
+                logWithTimestamp(`Erreur lors de l'attribution du rôle: ${roleError.message}`, 'ERROR');
+                console.error(roleError.stack);
+                await sendLog(guild, `✅ **${member}** a accepté le règlement\n❌ Erreur: Pas la permission de donner le rôle - ${roleError.message}`);
+            }
+        } catch (reglementError) {
+            logWithTimestamp(`Erreur dans la gestion du règlement: ${reglementError.message}`, 'ERROR');
+            console.error(reglementError.stack);
+        }
+
+    } catch (outerError) {
+        logWithTimestamp(`Erreur critique dans messageReactionAdd: ${outerError.message}`, 'ERROR');
+        console.error(outerError.stack);
     }
 });
 
 // Événement : Réaction retirée
 client.on('messageReactionRemove', async (reaction, user) => {
-    // Ignorer les réactions du bot
-    if (user.bot) return;
+    try {
+        // Ignorer les réactions du bot
+        if (user.bot) return;
 
-    // Si la réaction est partielle, la récupérer
-    if (reaction.partial) {
-        try {
-            await reaction.fetch();
-        } catch (error) {
-            console.error('❌ Erreur lors de la récupération de la réaction:', error);
+        logWithTimestamp(`Réaction retirée: ${reaction.emoji.name} par ${user.tag} sur message ${reaction.message.id}`, 'DEBUG');
+
+        // Si la réaction est partielle, la récupérer
+        if (reaction.partial) {
+            try {
+                logWithTimestamp(`Récupération de la réaction partielle (removal)...`, 'DEBUG');
+                await reaction.fetch();
+                logWithTimestamp(`Réaction partielle récupérée avec succès (removal)`, 'DEBUG');
+            } catch (error) {
+                logWithTimestamp(`Erreur lors de la récupération de la réaction partielle (removal): ${error.message}`, 'ERROR');
+                console.error(error.stack);
+                return;
+            }
+        }
+
+        // Vérifier que le message est toujours accessible
+        if (!reaction.message || !reaction.message.guild) {
+            logWithTimestamp(`Message ou guild non accessible pour le retrait de réaction`, 'WARN');
             return;
         }
-    }
 
     // GESTION DES VOTES DE SONDAGES
     const pollData = config.active_polls[reaction.message.id];
@@ -832,52 +899,138 @@ client.on('messageReactionRemove', async (reaction, user) => {
         return;
     }
 
-    // GESTION DU RÈGLEMENT (code existant)
-    // Vérifier si c'est le message du règlement
-    if (reaction.message.id !== config.rules_message_id) return;
+        // GESTION DU RÈGLEMENT
+        try {
+            // Vérifier si c'est le message du règlement
+            if (reaction.message.id !== config.rules_message_id) {
+                logWithTimestamp(`Retrait de réaction sur un message qui n'est pas le règlement (${reaction.message.id})`, 'DEBUG');
+                return;
+            }
 
-    // Vérifier si c'est le bon emoji
-    if (reaction.emoji.name !== config.emoji) return;
+            logWithTimestamp(`Retrait de réaction sur le message du règlement détectée`, 'INFO');
 
-    const guild = reaction.message.guild;
-    const member = guild.members.cache.get(user.id);
+            // Vérifier si c'est le bon emoji
+            if (reaction.emoji.name !== config.emoji) {
+                logWithTimestamp(`Emoji incorrect (removal): ${reaction.emoji.name} (attendu: ${config.emoji})`, 'DEBUG');
+                return;
+            }
 
-    if (!member) return;
+            logWithTimestamp(`Emoji correct détecté (removal): ${config.emoji}`, 'INFO');
 
-    // Retrait de rôle (si configuré)
-    if (VERIFIED_ROLE_ID === '0') {
-        // Pas de rôle configuré, juste logger le retrait
-        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement`);
-        console.log(`ℹ️ ${member.user.tag} a retiré son acceptation (retrait de rôle désactivé)`);
-        return;
+            const guild = reaction.message.guild;
+            const member = await guild.members.fetch(user.id).catch(() => null);
+
+            if (!member) {
+                logWithTimestamp(`Membre ${user.tag} non trouvé dans la guild (removal)`, 'WARN');
+                return;
+            }
+
+            logWithTimestamp(`Membre ${member.user.tag} trouvé, vérification du retrait de rôle...`, 'INFO');
+
+            // Retrait de rôle (si configuré)
+            if (VERIFIED_ROLE_ID === '0') {
+                // Pas de rôle configuré, juste logger le retrait
+                await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement`);
+                logWithTimestamp(`${member.user.tag} a retiré son acceptation (retrait de rôle désactivé)`, 'INFO');
+                return;
+            }
+
+            // Récupérer le rôle à retirer
+            const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
+            if (!role) {
+                logWithTimestamp(`Rôle avec l'ID ${VERIFIED_ROLE_ID} n'existe pas dans la guild (removal)`, 'ERROR');
+                await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement (rôle introuvable)`);
+                return;
+            }
+
+            logWithTimestamp(`Tentative de retrait du rôle "${role.name}" à ${member.user.tag}...`, 'INFO');
+
+            // Retirer le rôle au membre
+            try {
+                await member.roles.remove(role, 'Retrait d\'acceptation du règlement');
+                await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement et le rôle **${role.name}** a été retiré`);
+                logWithTimestamp(`❌ ${member.user.tag} a retiré son acceptation et perdu le rôle ${role.name}`, 'INFO');
+            } catch (roleError) {
+                logWithTimestamp(`Erreur lors du retrait du rôle: ${roleError.message}`, 'ERROR');
+                console.error(roleError.stack);
+                await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement\n❌ Erreur: Pas la permission de retirer le rôle - ${roleError.message}`);
+            }
+        } catch (reglementError) {
+            logWithTimestamp(`Erreur dans la gestion du règlement (removal): ${reglementError.message}`, 'ERROR');
+            console.error(reglementError.stack);
+        }
+
+    } catch (outerError) {
+        logWithTimestamp(`Erreur critique dans messageReactionRemove: ${outerError.message}`, 'ERROR');
+        console.error(outerError.stack);
     }
+});
 
-    // Récupérer le rôle à retirer
-    const role = guild.roles.cache.get(VERIFIED_ROLE_ID);
-    if (!role) {
-        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement`);
-        return;
-    }
+// ========================================
+// GESTION DES ÉVÉNEMENTS DE CONNEXION
+// ========================================
 
-    // Retirer le rôle au membre
-    try {
-        await member.roles.remove(role);
-        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement et le rôle **${role.name}** a été retiré`);
-        console.log(`❌ ${member.user.tag} a retiré son acceptation et perdu le rôle ${role.name}`);
-    } catch (error) {
-        await sendLog(guild, `❌ **${member}** a retiré son acceptation du règlement\n❌ Erreur: Pas la permission de retirer le rôle`);
-        console.error(error);
-    }
+// Événement : Avertissement
+client.on('warn', info => {
+    logWithTimestamp(`Avertissement Discord: ${info}`, 'WARN');
+});
+
+// Événement : Déconnexion
+client.on('shardDisconnect', (event, shardId) => {
+    logWithTimestamp(`Déconnexion du shard ${shardId} - Code: ${event.code} - Raison: ${event.reason || 'Non spécifiée'}`, 'WARN');
+});
+
+// Événement : Reconnexion en cours
+client.on('shardReconnecting', shardId => {
+    logWithTimestamp(`Reconnexion du shard ${shardId} en cours...`, 'INFO');
+});
+
+// Événement : Reprise de session
+client.on('shardResume', (shardId, replayedEvents) => {
+    logWithTimestamp(`Shard ${shardId} reconnecté - ${replayedEvents} événements rejoués`, 'SUCCESS');
+});
+
+// Événement : Erreur de shard
+client.on('shardError', (error, shardId) => {
+    logWithTimestamp(`Erreur sur le shard ${shardId}: ${error.message}`, 'ERROR');
+    console.error(error.stack);
+});
+
+// Événement : Shard prêt
+client.on('shardReady', (shardId, unavailableGuilds) => {
+    logWithTimestamp(`Shard ${shardId} prêt - Guildes indisponibles: ${unavailableGuilds ? unavailableGuilds.size : 0}`, 'SUCCESS');
 });
 
 // Gestion des erreurs
 client.on('error', error => {
-    console.error('❌ Erreur du client Discord:', error);
+    logWithTimestamp(`Erreur du client Discord: ${error.message}`, 'ERROR');
+    console.error(error.stack);
 });
 
-process.on('unhandledRejection', error => {
-    console.error('❌ Erreur non gérée:', error);
+// Erreurs de rate limit
+client.on('rateLimit', rateLimitData => {
+    logWithTimestamp(`Rate limit atteint - Timeout: ${rateLimitData.timeout}ms - Route: ${rateLimitData.route}`, 'WARN');
 });
+
+// Gestion des erreurs globales
+process.on('unhandledRejection', (error, promise) => {
+    logWithTimestamp(`Erreur non gérée (Promise): ${error.message}`, 'ERROR');
+    console.error('Promise:', promise);
+    console.error(error.stack);
+});
+
+process.on('uncaughtException', error => {
+    logWithTimestamp(`Exception non capturée: ${error.message}`, 'ERROR');
+    console.error(error.stack);
+    // Ne pas quitter le processus, laisser PM2 gérer
+});
+
+// Heartbeat pour vérifier que le bot est toujours vivant
+setInterval(() => {
+    const memoryUsage = process.memoryUsage();
+    const memoryMB = Math.round(memoryUsage.heapUsed / 1024 / 1024);
+    logWithTimestamp(`Heartbeat - Mémoire: ${memoryMB}MB - Ping: ${client.ws.ping}ms - Guildes: ${client.guilds.cache.size}`, 'DEBUG');
+}, 5 * 60 * 1000); // Toutes les 5 minutes
 
 // Connexion du bot
 if (!DISCORD_TOKEN) {
