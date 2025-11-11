@@ -32,6 +32,14 @@ const commands = [
         .setDescription('Poste le règlement du serveur avec validation par réaction')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder()
+        .setName('reglement-sync')
+        .setDescription('Synchronise un message existant comme règlement')
+        .addStringOption(option =>
+            option.setName('message_id')
+                .setDescription('ID du message à utiliser comme règlement')
+                .setRequired(true))
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    new SlashCommandBuilder()
         .setName('information')
         .setDescription('Poste les informations importantes du serveur')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -446,6 +454,63 @@ client.on('interactionCreate', async (interaction) => {
         } catch (error) {
             console.error('❌ Erreur lors de la publication du règlement:', error.message);
             await interaction.editReply({ content: '❌ Erreur lors de la publication du règlement.' });
+        }
+    }
+
+    // Commande /reglement-sync
+    if (interaction.commandName === 'reglement-sync') {
+        const messageId = interaction.options.getString('message_id');
+
+        try {
+            logWithTimestamp(`Tentative de synchronisation du message ${messageId} comme règlement`, 'INFO');
+
+            // Récupérer le message existant
+            const message = await interaction.channel.messages.fetch(messageId).catch(() => null);
+
+            if (!message) {
+                logWithTimestamp(`Message ${messageId} non trouvé`, 'ERROR');
+                return interaction.reply({
+                    content: '❌ Message introuvable. Vérifiez l\'ID du message et assurez-vous qu\'il est dans ce salon.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            // Vérifier que le message appartient au bot
+            if (message.author.id !== client.user.id) {
+                logWithTimestamp(`Message ${messageId} n'appartient pas au bot`, 'WARN');
+                return interaction.reply({
+                    content: '⚠️ Ce message n\'a pas été posté par le bot. Je peux quand même le synchroniser, mais je ne pourrai pas le modifier.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+            // Ajouter la réaction si elle n'existe pas déjà
+            const hasReaction = message.reactions.cache.has(config.emoji);
+            if (!hasReaction) {
+                await message.react(config.emoji);
+                logWithTimestamp(`Réaction ${config.emoji} ajoutée au message ${messageId}`, 'INFO');
+            } else {
+                logWithTimestamp(`Le message ${messageId} a déjà la réaction ${config.emoji}`, 'INFO');
+            }
+
+            // Sauvegarder l'ID du message dans la config
+            config.rules_message_id = messageId;
+            config.rules_channel_id = interaction.channel.id;
+            saveConfig();
+
+            logWithTimestamp(`Message ${messageId} synchronisé comme règlement avec succès`, 'SUCCESS');
+
+            await interaction.reply({
+                content: `✅ Message synchronisé !\n\n**ID du message :** ${messageId}\n**Emoji :** ${config.emoji}\n\nLe bot détectera maintenant les réactions sur ce message pour attribuer le rôle.`,
+                flags: MessageFlags.Ephemeral
+            });
+        } catch (error) {
+            logWithTimestamp(`Erreur lors de la synchronisation du règlement: ${error.message}`, 'ERROR');
+            console.error(error.stack);
+            await interaction.reply({
+                content: `❌ Erreur lors de la synchronisation : ${error.message}`,
+                flags: MessageFlags.Ephemeral
+            });
         }
     }
 
